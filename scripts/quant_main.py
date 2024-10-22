@@ -36,11 +36,14 @@ import torch.nn as nn
 from torch.cuda.amp import autocast
 
 def validate_model(args, model, diffusion, vae):
+    """
+    用于验证模型生成图像的质量
+    """
     seed_everything(args.seed)
     device = next(model.parameters()).device
     using_cfg = args.cfg_scale > 1.0
     # Labels to condition the model with (feel free to change):
-    class_labels = [207, 360, 387, 974, 88, 979, 417, 279]
+    class_labels = [207] # [207, 360, 387, 974, 88, 979, 417, 279]
     # Create sampling noise:
     n = len(class_labels)
     z = torch.randn(n, 4, model.input_size, model.input_size, device=device)
@@ -60,16 +63,23 @@ def validate_model(args, model, diffusion, vae):
         samples = diffusion.ddim_sample_loop(
                 model, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=False, device=device
             )
+       
     if using_cfg:
         samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
     samples = vae.decode(samples / 0.18215).sample
+    print("============================")
+    print("sample type", type(samples))
+    print("sample", samples)
+    if(type(samples) == torch.Tensor):
+        print("sample shape", samples.shape)
+    print("============================")
     # Save and display images:
     save_image(samples, f'{args.experiment_dir}/sample.png', nrow=4, normalize=True, value_range=(-1, 1))
     print("Finish validating samples!")
     
 def create_npz_from_sample_folder(sample_dir, num=50_000):
     """
-    Builds a single .npz file from a folder of .png samples.
+    该函数从图像文件夹中读取图像，并将它们保存为一个.npz文件
     """
     samples = []
     for i in tqdm(range(num), desc="Building .npz file from samples"):
@@ -84,6 +94,9 @@ def create_npz_from_sample_folder(sample_dir, num=50_000):
     return npz_path
 
 def sample_fid(args, model, diffusion, vae):
+    """
+    该函数生成大量图像样本，并将它们保存为.png文件
+    """
     # Create folder to save samples:
     seed_everything(args.seed)
     device = next(model.parameters()).device
@@ -312,6 +325,74 @@ def create_argparser():
     parser.add_argument("--num-fid-samples", type=int, default=50_000)
     return parser
 
+def forward():
+    args = create_argparser().parse_args()
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = False
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f'device: {device}')
+    # Setup an experiment folder:
+    os.makedirs(args.results_dir, exist_ok=True)  # Make results folder (holds all experiment subfolders)
+    experiment_index = len(glob(f"{args.results_dir}/*"))
+    quant_method = "qdit"
+    quant_string_name = f"{quant_method}_w{args.wbits}a{args.abits}"
+    experiment_dir = f"{args.results_dir}/{experiment_index:03d}-{quant_string_name}"  # Create an experiment folder
+    args.experiment_dir = experiment_dir
+    os.makedirs(experiment_dir, exist_ok=True)
+    create_logger(experiment_dir)
+    logging.info(f"Experiment directory created at {experiment_dir}")
+    logging.info(f"""wbits: {args.wbits}, abits: {args.abits}, w_sym: {args.w_sym}, a_sym: {args.a_sym},
+                 weight_group_size: {args.weight_group_size}, act_group_size: {args.act_group_size},
+                 quant_method: {args.quant_method}, use_gptq: {args.use_gptq}, static: {args.static},
+                 image_size: {args.image_size}, cfg_scale: {args.cfg_scale}""")
+    
+    # Load model:
+    latent_size = args.image_size // 8
+    model = DiT_models[args.model](
+        input_size=latent_size,
+        num_classes=args.num_classes
+    ).to(device)
+    # Auto-download a pre-trained model or load a custom DiT checkpoint from train.py:
+    ckpt_path = args.ckpt or f"DiT-XL-2-{args.image_size}x{args.image_size}.pt"
+    state_dict = find_model(ckpt_path)
+    model.load_state_dict(state_dict)
+    model.eval()  # important!
+    diffusion = create_diffusion(str(args.num_sampling_steps))
+    vae = AutoencoderKL.from_pretrained(f"../sd-vae-ft-{args.vae}").to(device)
+    args.weight_group_size = eval(args.weight_group_size)
+    args.act_group_size = eval(args.act_group_size)
+    args.weight_group_size = [args.weight_group_size] * len(model.blocks) if isinstance(args.weight_group_size, int) else args.weight_group_size
+    args.act_group_size = [args.act_group_size] * len(model.blocks) if isinstance(args.act_group_size, int) else args.act_group_size
+    
+    # print("Inserting activations quantizers ...")
+    # if args.static:
+    #     dataloader = get_loader(args.calib_data_path, nsamples=1024, batch_size=16)
+    #     print("Getting activation stats...")
+    #     scales = get_act_scales(
+    #         model, diffusion, dataloader, device, args
+    #     )
+    # else:
+    #     scales = defaultdict(lambda: None)
+    # model = add_act_quant_wrapper(model, device=device, args=args, scales=scales)
+
+    # print("Quantizing ...")
+    # if args.use_gptq:
+    #     dataloader = get_loader(args.calib_data_path, nsamples=256)
+    #     model = quantize_model_gptq(model, device=device, args=args, dataloader=dataloader)
+    # else:
+    #     model = quantize_model(model, device=device, args=args)
+
+    # print("Finish quant!")
+    # logging.info(model)
+
+    # generate some sample images
+    model.to(device)
+    model.half()
+    torch.backends.cuda.matmul.allow_tf32 = args.tf32  # True: fast but may lead to some small numerical differences
+    torch.set_grad_enabled(False)
+    validate_model(args, model, diffusion, vae)
 
 if __name__ == "__main__": 
-    main()
+    # main()
+    forward()

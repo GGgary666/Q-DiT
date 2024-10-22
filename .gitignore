@@ -6,3 +6,4 @@ sd-vae-ft-mse
 Q_DiT.egg-info
 evaluations/reference_batch/*
 evaluations/classify_image_graph_def.pb
+models/__pycache__/*
