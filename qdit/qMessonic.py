@@ -352,18 +352,18 @@ class QuantAdaLayerNormZero(nn.Module):
 class QuantMeissonicSingleTransformerBlock(nn.Module):
     def __init__(
         self,
-        single_tranformer_block: SingleTransformerBlock,
+        single_transformer_block: SingleTransformerBlock,
         args
     ):
         super().__init__()
         self.args = args
         self.quantize_bmm_input = args.quantize_bmm_input
-        # self.mlp_hidden_dim = single_tranformer_block.mlp_hidden_dim
-        self.norm = QuantAdaLayerNormZeroSingle(single_tranformer_block.norm, deepcopy(args))
-        self.proj_mlp = QLinearLayer(single_tranformer_block.proj_mlp, deepcopy(args))
-        self.act_mlp = single_tranformer_block.act_mlp
-        self.proj_out = QLinearLayer(single_tranformer_block.proj_out, deepcopy(args))
-        self.attn = QuantAttention(single_tranformer_block.attn, deepcopy(args))
+        # self.mlp_hidden_dim = single_transformer_block.mlp_hidden_dim
+        self.norm = QuantAdaLayerNormZeroSingle(single_transformer_block.norm, deepcopy(args))
+        self.proj_mlp = QLinearLayer(single_transformer_block.proj_mlp, deepcopy(args))
+        self.act_mlp = single_transformer_block.act_mlp
+        self.proj_out = QLinearLayer(single_transformer_block.proj_out, deepcopy(args))
+        self.attn = QuantAttention(single_transformer_block.attn, deepcopy(args))
         if self.quantize_bmm_input:
             self.norm_quant = Quantizer(args=deepcopy(args))
             self.proj_mlp_quant = Quantizer(args=deepcopy(args))
@@ -437,9 +437,9 @@ class QuantMeissonicTransformerBlock(nn.Module):
         self.norm1_context = transormer_block.norm1_context
         self.attn = QuantAttention(transormer_block.attn, deepcopy(args))
         self.norm2 = transormer_block.norm2
-        self.ff = transormer_block.ff
+        self.ff = QuantFeedForward(transormer_block.ff, deepcopy(args))
         self.norm2_context = transormer_block.norm2_context
-        self.ff_context = transormer_block.ff_context
+        self.ff_context = QuantFeedForward(transormer_block.ff, deepcopy(args))
         if self.quantize_bmm_input:
             self.norm1_quant = Quantizer(args=deepcopy(args))
             self.norm1_context_quant = Quantizer(args=deepcopy(args))

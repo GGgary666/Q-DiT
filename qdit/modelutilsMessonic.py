@@ -10,7 +10,7 @@ from functools import partial
 from models.meissonic import SingleTransformerBlock, TransformerBlock
 
 
-from .quant import quantize_activation_wrapper, quantize_attn_v_wrapper, quantize_attn_k_wrapper, quantize_attn_q_wrapper
+from .quant import *
 
 
 def add_act_quant_wrapper(model, device, args, scales):
@@ -24,7 +24,7 @@ def add_act_quant_wrapper(model, device, args, scales):
         m = None
         if isinstance(transformer_blocks[i], TransformerBlock):
             m = QuantMeissonicTransformerBlock(
-                dit_block=transformer_blocks[i],
+                transormer_block=transformer_blocks[i],
                 args=args_i,
             )
         elif isinstance(transformer_blocks[i], QuantMeissonicTransformerBlock):
@@ -35,7 +35,7 @@ def add_act_quant_wrapper(model, device, args, scales):
 
         m = m.to(device)
 
-        nameTemplate = 'blocks.{}.{}.{}'
+        nameTemplate = 'transformer_blocks.{}.{}.{}'
         m.attn.input_quant.configure(
             partial(quantize_activation_wrapper, args=args_i),
             scales[nameTemplate.format(i, 'attn', 'qkv')]
@@ -57,19 +57,74 @@ def add_act_quant_wrapper(model, device, args, scales):
                 partial(quantize_attn_v_wrapper, args=args_i),
                 None
             )
+            m.attn.add_k_quant.configure(partial(quantize_attn_add_k_wrapper, args=args_i), None)
+            m.attn.add_v_quant.configure(partial(quantize_attn_add_v_wrapper, args=args_i), None)
+            m.attn.add_q_quant.configure(partial(quantize_attn_add_q_wrapper, args=args_i), None)
 
-        m.mlp.input_quant.configure(
+        m.ff.input_quant.configure(
             partial(quantize_activation_wrapper, args=args_i),
-            scales[nameTemplate.format(i, 'mlp', 'fc1')]
+            scales[nameTemplate.format(i, 'ff', 'act_fn')]
         )
-        m.mlp.act_quant.configure(
+        m.ff.act_quant.configure(
             partial(quantize_activation_wrapper, args=args_i),
-            scales[nameTemplate.format(i, 'mlp', 'fc2')]
+            scales[nameTemplate.format(i, 'ff', 'proj')]
+        )
+        m.ff_context.input_quant.configure(
+            partial(quantize_activation_wrapper, args=args_i),
+            scales[nameTemplate.format(i, 'ff_context', 'act_fn')]
+        )
+        m.ff_context.act_quant.configure(
+            partial(quantize_activation_wrapper, args=args_i),
+            scales[nameTemplate.format(i, 'ff_context', 'proj')]
         )
         
-        
-        blocks[i] = m.cpu()
+        transformer_blocks[i] = m.cpu()
         torch.cuda.empty_cache()
+        
+    for i in range(len(single_transformer_blocks)):
+        args_i = copy.deepcopy(args)
+        args_i.weight_group_size = args.weight_group_size[i]
+        args_i.act_group_size = args.act_group_size[i]
+        m = None
+        if isinstance(single_transformer_blocks[i], SingleTransformerBlock):
+            m = QuantMeissonicSingleTransformerBlock(
+                single_transformer_block=single_transformer_blocks[i],
+                args=args_i,
+            )
+        elif isinstance(single_transformer_blocks[i], QuantMeissonicSingleTransformerBlock):
+            m = single_transformer_blocks[i]
+
+        if m is None:
+            continue
+
+        m = m.to(device)
+
+        nameTemplate = 'single_transformer_block.{}.{}.{}'
+        m.attn.input_quant.configure(
+            partial(quantize_activation_wrapper, args=args_i),
+            scales[nameTemplate.format(i, 'attn', 'qkv')]
+        )
+        m.attn.act_quant.configure(
+            partial(quantize_activation_wrapper, args=args_i),
+            scales[nameTemplate.format(i, 'attn', 'proj')]
+        )
+        if args.quantize_bmm_input:
+            m.attn.q_quant.configure(
+                partial(quantize_attn_q_wrapper, args=args_i),
+                None
+            )
+            m.attn.k_quant.configure(
+                partial(quantize_attn_k_wrapper, args=args_i),
+                None
+            )
+            m.attn.v_quant.configure(
+                partial(quantize_attn_v_wrapper, args=args_i),
+                None
+            )
+        
+        single_transformer_blocks[i] = m.cpu()
+        torch.cuda.empty_cache()
+        
     return model
 
 def quantize_model(model, device, args):

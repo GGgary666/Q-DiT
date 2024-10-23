@@ -209,6 +209,44 @@ def quantize_attn_q_wrapper(w: torch.tensor, args) -> torch.tensor:
     w = quantize_tensor(w, n_bits=args.abits, group_size=0, tiling=0, sym=False, clip_ratio=args.kv_clip_ratio, exponential=False)
     return w.view(saved_shape)
 
+@torch.no_grad()
+def quantize_attn_add_q_wrapper(w: torch.tensor, args) -> torch.tensor:
+    # Quantize on head_dim
+    assert w.shape[-1] == 72
+    
+    head_dim = w.shape[-1]
+    saved_shape = w.shape
+    w = w.reshape(-1, head_dim)
+
+    w = quantize_tensor(w, n_bits=args.abits, group_size=0, tiling=0, sym=False, clip_ratio=args.kv_clip_ratio, exponential=False)
+    return w.view(saved_shape)
+
+
+@torch.no_grad()
+def quantize_attn_add_k_wrapper(w: torch.tensor, args) -> torch.tensor:
+    # Quantize on head_dim
+    assert w.shape[-1] == 72
+    
+    head_dim = w.shape[-1]
+    saved_shape = w.shape
+    w = w.reshape(-1, head_dim)
+
+    w = quantize_tensor(w, n_bits=args.abits, group_size=0, tiling=0, sym=False, clip_ratio=args.kv_clip_ratio, exponential=False)
+    return w.view(saved_shape)
+
+
+@torch.no_grad()
+def quantize_attn_add_v_wrapper(w: torch.tensor, args) -> torch.tensor:
+    # Quantize on head_dim
+    assert w.shape[-1] == 72
+    
+    head_dim = w.shape[-1]
+    saved_shape = w.shape
+    w = w.reshape(-1, head_dim)
+
+    w = quantize_tensor(w, n_bits=args.abits, group_size=0, tiling=0, sym=False, clip_ratio=args.kv_clip_ratio, exponential=False)
+    return w.view(saved_shape)
+
 class Quantizer(nn.Module):
     def __init__(self, args) -> None:
         super().__init__()
