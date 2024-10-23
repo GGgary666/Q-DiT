@@ -185,4 +185,3 @@ class QuantMlp(nn.Module):
         x = self.fc2(x)
         x = self.drop2(x)
         return x
-

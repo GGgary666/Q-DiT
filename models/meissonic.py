@@ -119,8 +119,8 @@ class TransformerBlock(nn.Module):
         # self.ff_context = FeedForward(dim=dim, dim_out=dim, activation_fn="swiglu")
 
         # let chunk size default to None
-        self._chunk_size = None
-        self._chunk_dim = 0
+        # self._chunk_size = None
+        # self._chunk_dim = 0
 
     def forward(
         self,

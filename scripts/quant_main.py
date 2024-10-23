@@ -67,12 +67,12 @@ def validate_model(args, model, diffusion, vae):
     if using_cfg:
         samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
     samples = vae.decode(samples / 0.18215).sample
-    print("============================")
-    print("sample type", type(samples))
-    print("sample", samples)
-    if(type(samples) == torch.Tensor):
-        print("sample shape", samples.shape)
-    print("============================")
+    # print("============================")
+    # print("sample type", type(samples))
+    # print("sample", samples)
+    # if(type(samples) == torch.Tensor):
+    #     print("sample shape", samples.shape)
+    # print("============================")
     # Save and display images:
     save_image(samples, f'{args.experiment_dir}/sample.png', nrow=4, normalize=True, value_range=(-1, 1))
     print("Finish validating samples!")
@@ -394,5 +394,5 @@ def forward():
     validate_model(args, model, diffusion, vae)
 
 if __name__ == "__main__": 
-    # main()
-    forward()
+    main()
+    # forward()

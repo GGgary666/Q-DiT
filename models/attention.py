@@ -43,6 +43,7 @@ class Attention(nn.Module):
         self.context_pre_only = context_pre_only
         self.scale = self.dim_head ** -0.5
         self.pre_only = pre_only
+        self.dropout = dropout
         
         if qk_norm == "rms_norm":
             self.norm_q = RMSNorm(dim_head, eps=eps)
@@ -63,8 +64,9 @@ class Attention(nn.Module):
 
         if not self.pre_only:
             self.to_out = nn.ModuleList([])
-            self.to_out.append(nn.Linear(query_dim, query_dim, bias=out_bias))
-            self.to_out.append(nn.Dropout(dropout))
+            self.to_out_proj = nn.Linear(query_dim, query_dim, bias=out_bias)
+            self.to_out.append(self.to_out_proj)
+            self.to_out.append(nn.Dropout(self.dropout))
         
         if self.context_pre_only is not None and not self.context_pre_only:
             self.to_add_out = nn.Linear(query_dim, query_dim, bias=out_bias)
@@ -184,23 +186,25 @@ class FeedForward(nn.Module):
         super().__init__()
         if inner_dim is None:
             inner_dim = int(dim * mult)
-        dim_out = dim_out if dim_out is not None else dim
-
+        self.dim_out = dim_out if dim_out is not None else dim
+        self.dropout = dropout
+        self.final_dropout = final_dropout
         if activation_fn == "gelu":
-            act_fn = GELU(dim, inner_dim, bias=bias)
+            self.act_fn = GELU(dim, inner_dim, bias=bias)
         if activation_fn == "gelu-approximate":
-            act_fn = GELU(dim, inner_dim, approximate="tanh", bias=bias)
+            self.act_fn = GELU(dim, inner_dim, approximate="tanh", bias=bias)
     
         self.net = nn.ModuleList([])
         # project in
-        self.net.append(act_fn)
+        self.net.append(self.act_fn)
         # project dropout
-        self.net.append(nn.Dropout(dropout))
+        self.net.append(nn.Dropout(self.dropout))
         # project out
-        self.net.append(nn.Linear(inner_dim, dim_out, bias=bias))
+        self.proj = nn.Linear(inner_dim, dim_out, bias=bias)
+        self.net.append(self.proj)
         # FF as used in Vision Transformer, MLP-Mixer, etc. have a final dropout
-        if final_dropout:
-            self.net.append(nn.Dropout(dropout))
+        if self.final_dropout:
+            self.net.append(nn.Dropout(self.dropout))
 
     def forward(self, hidden_states: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         for module in self.net:
